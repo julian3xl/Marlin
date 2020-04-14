@@ -870,6 +870,9 @@
 #ifndef MSG_ERR_PROBING_FAILED
   #define MSG_ERR_PROBING_FAILED              _UxGT("Probing failed")
 #endif
+#ifndef MSG_POWER_LOSS_RECOVERY
+  #define MSG_POWER_LOSS_RECOVERY             _UxGT("Power-Loss Recovery ?")
+#endif
 
 //
 // Filament Change screens show up to 3 lines on a 4-line display

@@ -304,16 +304,13 @@ void lcd_printPGM_utf(const char *str, uint8_t n=LCD_WIDTH) {
         constexpr uint8_t offy = DOG_CHAR_HEIGHT;
       #endif
 
-      const uint8_t offx = (u8g.getWidth() - (START_BMPWIDTH)) / 2,
-                    txt1X = (u8g.getWidth() - (sizeof(STRING_SPLASH_LINE1) - 1) * (DOG_CHAR_WIDTH)) / 2;
+      const uint8_t offx = (u8g.getWidth() - (START_BMPWIDTH)) / 2;
 
       u8g.firstPage();
       do {
         u8g.drawBitmapP(offx, offy, START_BMPBYTEWIDTH, START_BMPHEIGHT, start_bmp);
         lcd_setFont(FONT_MENU);
-        #ifndef STRING_SPLASH_LINE2
-          u8g.drawStr(txt1X, u8g.getHeight() - (DOG_CHAR_HEIGHT), STRING_SPLASH_LINE1);
-        #else
+        #ifdef STRING_SPLASH_LINE2
           const uint8_t txt2X = (u8g.getWidth() - (sizeof(STRING_SPLASH_LINE2) - 1) * (DOG_CHAR_WIDTH)) / 2;
           u8g.drawStr(txt1X, u8g.getHeight() - (DOG_CHAR_HEIGHT) * 3 / 2, STRING_SPLASH_LINE1);
           u8g.drawStr(txt2X, u8g.getHeight() - (DOG_CHAR_HEIGHT) * 1 / 2, STRING_SPLASH_LINE2);
@@ -493,7 +490,7 @@ static void lcd_implementation_status_screen() {
 
   if (PAGE_UNDER(STATUS_SCREENHEIGHT + 1)) {
 
-    u8g.drawBitmapP(9, 1, STATUS_SCREENBYTEWIDTH, STATUS_SCREENHEIGHT,
+    u8g.drawBitmapP(0, 1, STATUS_SCREENBYTEWIDTH, STATUS_SCREENHEIGHT,
       #if HAS_FAN0
         blink && fanSpeeds[0] ? status_screen0_bmp : status_screen1_bmp
       #else
@@ -509,11 +506,12 @@ static void lcd_implementation_status_screen() {
 
   if (PAGE_UNDER(28)) {
     // Extruders
-    HOTEND_LOOP() _draw_heater_status(5 + e * 25, e, blink);
+    // HOTEND_LOOP() _draw_heater_status(5 + e * 25, e, blink);
+    for(int e = 0; e < 1; e++) _draw_heater_status(38 + e * 25, e, blink);
 
     // Heated bed
     #if HOTENDS < 4 && HAS_TEMP_BED
-      _draw_heater_status(81, -1, blink);
+      _draw_heater_status(72, -1, blink);
     #endif
 
     #if HAS_FAN0
@@ -556,7 +554,7 @@ static void lcd_implementation_status_screen() {
     if (PAGE_CONTAINS(49, 52 - (TALL_FONT_CORRECTION)))       // 49-52 (or 49-51)
       u8g.drawFrame(
         PROGRESS_BAR_X, 49,
-        PROGRESS_BAR_WIDTH, 4 - (TALL_FONT_CORRECTION)
+        PROGRESS_BAR_X - 1, 4 - (TALL_FONT_CORRECTION)
       );
 
     if (IS_SD_PRINTING) {
@@ -568,7 +566,7 @@ static void lcd_implementation_status_screen() {
       if (PAGE_CONTAINS(50, 51 - (TALL_FONT_CORRECTION)))     // 50-51 (or just 50)
         u8g.drawBox(
           PROGRESS_BAR_X + 1, 50,
-          (uint16_t)((PROGRESS_BAR_WIDTH - 2) * card.percentDone() * 0.01), 2 - (TALL_FONT_CORRECTION)
+          (uint16_t)((PROGRESS_BAR_X - 1) * card.percentDone() * 0.01), 2 - (TALL_FONT_CORRECTION)
         );
 
       //
@@ -601,8 +599,24 @@ static void lcd_implementation_status_screen() {
       duration_t elapsed = print_job_timer.duration();
       bool has_days = (elapsed.value > 60*60*24L);
       uint8_t len = elapsed.toDigital(buffer, has_days);
-      u8g.setPrintPos(SD_DURATION_X, 48);
+      u8g.setPrintPos(60, 48);
       lcd_print(buffer);
+
+      if(previous_cmd_ms != 0)
+      {
+        // Displays the percentage of printing.
+        uint16_t progresssum=card.percentDone();
+        u8g.setPrintPos(104,51);
+        u8g.print(itostr3(progresssum));
+        u8g.print('%');
+      }
+      else
+      {
+        // Shows the percentage of print progress.
+        u8g.setPrintPos(104,51);
+        u8g.print(itostr3(0));
+        u8g.print('%');
+      }
     }
 
   #endif

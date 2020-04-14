@@ -349,7 +349,7 @@
                            || isnan(ubl.z_values[0][0]))
 #endif
 
-#if ENABLED(NEOPIXEL_LED) 
+#if ENABLED(NEOPIXEL_LED)
   #if NEOPIXEL_TYPE == NEO_RGB || NEOPIXEL_TYPE == NEO_RBG || NEOPIXEL_TYPE == NEO_GRB || NEOPIXEL_TYPE == NEO_GBR || NEOPIXEL_TYPE == NEO_BRG || NEOPIXEL_TYPE == NEO_BGR
     #define NEO_WHITE 255, 255, 255
   #else
@@ -665,6 +665,19 @@ float cartes[XYZ] = { 0 };
 #endif
 
 static bool send_ok[BUFSIZE];
+#if ENABLED(SDSUPPORT)
+  #if ENABLED(POWEROFF_SAVE_SD_FILE)
+    #define SAVE_INFO_INTERVAL (1000 * 10)
+    #define APPEND_CMD_COUNT 5
+    // #define SAVE_EACH_CMD_MODE
+    struct power_off_info_t power_off_info;
+    static char power_off_commands[BUFSIZE + APPEND_CMD_COUNT][MAX_CMD_SIZE];
+    int power_off_commands_count = 0;
+    int power_off_type_yes = 0;
+    static int power_off_commands_index = 0;
+  #endif
+#endif
+bool drain_power_off_commands();
 
 #if HAS_SERVOS
   Servo servo[NUM_SERVOS];
@@ -1253,6 +1266,11 @@ inline void get_serial_commands() {
      */
 
     if (commands_in_queue == 0) stop_buffering = false;
+
+    #if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+      /* translation: Priority reads the power-off saved command. */
+      if (drain_power_off_commands()) return;
+    #endif
 
     uint16_t sd_count = 0;
     bool card_eof = card.eof();
@@ -5964,6 +5982,10 @@ inline void gcode_G92() {
 
         if (i != E_AXIS) {
           didXYZ = true;
+          if (i == Z_AXIS)
+          {
+            axis_known_position[Z_AXIS] = true;
+          }
           #if HAS_POSITION_SHIFT
             position_shift[i] += v - p; // Offset the coordinate space
             update_software_endstops((AxisEnum)i);
@@ -6493,7 +6515,13 @@ inline void gcode_M17() {
   /**
    * M21: Init SD Card
    */
-  inline void gcode_M21() { card.initsd(); }
+  inline void gcode_M21()
+  {
+    card.initsd();
+    #if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+      init_power_off_info();
+    #endif
+  }
 
   /**
    * M22: Release SD Card
@@ -6512,7 +6540,12 @@ inline void gcode_M17() {
   /**
    * M24: Start or Resume SD Print
    */
-  inline void gcode_M24() {
+  inline void gcode_M24()
+  {
+    #if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+      card.removePowerOffFile();
+    #endif
+
     #if ENABLED(PARK_HEAD_ON_PAUSE)
       resume_print();
     #endif
@@ -7320,7 +7353,10 @@ inline void gcode_M104() {
     #endif
 
     if (parser.value_celsius() > thermalManager.degHotend(target_extruder))
-      lcd_status_printf_P(0, PSTR("E%i %s"), target_extruder + 1, MSG_HEATING);
+    {
+      // lcd_status_printf_P(0, PSTR("E%i %s"), target_extruder + 1, MSG_HEATING);
+      lcd_status_printf_P(0, PSTR("Extruder %s"), MSG_HEATING);
+    }
   }
 
   #if ENABLED(AUTOTEMP)
@@ -7539,7 +7575,11 @@ inline void gcode_M109() {
         print_job_timer.start();
     #endif
 
-    if (thermalManager.isHeatingHotend(target_extruder)) lcd_status_printf_P(0, PSTR("E%i %s"), target_extruder + 1, MSG_HEATING);
+    if (thermalManager.isHeatingHotend(target_extruder))
+    {
+      // lcd_status_printf_P(0, PSTR("E%i %s"), target_extruder + 1, MSG_HEATING);
+      lcd_status_printf_P(0, PSTR("Extruder %s"), MSG_HEATING);
+    }
   }
   else return;
 
@@ -8001,6 +8041,10 @@ inline void gcode_M81() {
       fans_paused = false;
       ZERO(paused_fanSpeeds);
     #endif
+  #endif
+  #if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+    card.removePowerOffFile();
+    power_off_commands_count = 0;
   #endif
 
   safe_delay(1000); // Wait 1 second before switching off
@@ -13367,6 +13411,232 @@ void stop() {
 }
 
 /**
+ * Add about power off init information and confirm power off continue print
+ */
+#if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+  void init_power_off_info ()
+  {
+    int i = 0;
+    // if (power_off_commands_count > 0) return;
+    memset(&power_off_info, 0, sizeof(power_off_info));
+    memset(power_off_commands, 0, sizeof(power_off_commands));
+    if (!card.cardOK)
+    {
+      card.initsd();
+    }
+    if (card.cardOK)
+    {
+      SERIAL_PROTOCOLLN("Init power off infomation.");
+      SERIAL_PROTOCOLLN("size: ");
+      SERIAL_PROTOCOLLN(sizeof(power_off_info));
+      strncpy_P(power_off_info.power_off_filename, PSTR("bin"), sizeof(power_off_info.power_off_filename) - 1);
+      if (card.existPowerOffFile(power_off_info.power_off_filename))
+      {
+        card.openPowerOffFile(power_off_info.power_off_filename, O_READ);
+        card.getPowerOffInfo(&power_off_info, sizeof(power_off_info));
+        card.closePowerOffFile();
+        // card.removePowerOffFile();
+        SERIAL_PROTOCOLLN("init valid: ");
+        SERIAL_PROTOCOLLN((unsigned long)power_off_info.valid_head);
+        SERIAL_PROTOCOLLN((unsigned long)power_off_info.valid_foot);
+        if ((power_off_info.valid_head != 0) && (power_off_info.valid_head == power_off_info.valid_foot))
+        {
+          /* --------------------------------------------------------------------- */
+          enable_Z();
+          SERIAL_PROTOCOLLN("current_position(X,Y,Z,E,F,T1..T4,B): ");
+          for (i = 0; i < NUM_AXIS; i++)
+          {
+            // current_position[i] = power_off_info.current_position[i];
+            SERIAL_PROTOCOLLN(power_off_info.current_position[i]);
+          }
+          feedrate_mm_s = power_off_info.feedrate;
+          SERIAL_PROTOCOLLN(power_off_info.feedrate);
+          for (i = 0; i < 4; i++)
+          {
+            // target_temperature[i] = power_off_info.target_temperature[i];
+            SERIAL_PROTOCOLLN(power_off_info.target_temperature[i]);
+          }
+          SERIAL_PROTOCOLLN(power_off_info.target_temperature_bed);
+
+          // SERIAL_PROTOCOLLN(power_off_info.saved_extruder);
+          // SERIAL_PROTOCOLLN("power off info T number");
+          /* --------------------------------------------------------------------- */
+          SERIAL_PROTOCOLLN("cmd_queue(R,W,C,Q): ");
+          // cmd_queue_index_r = power_off_info.cmd_queue_index_r;
+          SERIAL_PROTOCOLLN(power_off_info.cmd_queue_index_r);
+          // cmd_queue_index_w = power_off_info.cmd_queue_index_w;
+          SERIAL_PROTOCOLLN(power_off_info.cmd_queue_index_w);
+          // commands_in_queue = power_off_info.commands_in_queue;
+          SERIAL_PROTOCOLLN(power_off_info.commands_in_queue);
+          // memcpy(command_queue, power_off_info.command_queue, sizeof(command_queue));
+          for (i = 0; i < BUFSIZE; i++)
+          {
+            SERIAL_PROTOCOLLN(power_off_info.command_queue[i]);
+          }
+          char str_X[16];
+          char str_Y[16];
+          char str_Z[16];
+          char str_E[16];
+          char str_Z_up[16];
+          memset(str_Z, 0, sizeof(str_X));
+          memset(str_Z, 0, sizeof(str_Y));
+          memset(str_Z, 0, sizeof(str_Z));
+          memset(str_E, 0, sizeof(str_E));
+          memset(str_Z_up, 0, sizeof(str_Z_up));
+          dtostrf(power_off_info.current_position[0], 1, 3, str_X);
+          dtostrf(power_off_info.current_position[1], 1, 3, str_Y);
+          dtostrf(power_off_info.current_position[2], 1, 3, str_Z);
+          dtostrf(power_off_info.current_position[2] + 5, 1, 3, str_Z_up);
+          #if ENABLED(SAVE_EACH_CMD_MODE)
+            dtostrf(power_off_info.current_position[3] - 5, 1, 3, str_E);
+          #else
+            dtostrf(power_off_info.current_position[3], 1, 3, str_E);
+          #endif
+
+          // sprintf_P(power_off_commands[0], PSTR("G0 Z%s"), tmp);
+          sprintf_P(power_off_commands[0], PSTR("G92 Z%s E%s"), str_Z, str_E);
+          enqueue_and_echo_command(power_off_commands[0]);
+          sprintf_P(power_off_commands[1], PSTR("G0 Z%s"), str_Z_up);
+          enqueue_and_echo_command(power_off_commands[1]);
+          sprintf_P(power_off_commands[2], PSTR("G28 X0 Y0"));
+          enqueue_and_echo_command(power_off_commands[2]);
+          sprintf_P(power_off_commands[3], PSTR("G0 Z%s"), str_Z);
+          enqueue_and_echo_command(power_off_commands[3]);
+          sprintf_P(power_off_commands[4], PSTR("M117 Printing..."));
+          enqueue_and_echo_command(power_off_commands[4]);
+
+          power_off_commands_count = APPEND_CMD_COUNT;
+          i = APPEND_CMD_COUNT;
+          while (power_off_info.commands_in_queue > 0)
+          {
+            strcpy(power_off_commands[i++], power_off_info.command_queue[power_off_info.cmd_queue_index_r]);
+            power_off_commands_count++;
+            power_off_info.commands_in_queue--;
+            power_off_info.cmd_queue_index_r = (power_off_info.cmd_queue_index_r + 1) % BUFSIZE;
+          }
+          for (i = 0; i < power_off_commands_count; i++)
+          {
+            SERIAL_PROTOCOLLN(power_off_commands[i]);
+          }
+          /* --------------------------------------------------------------------- */
+          SERIAL_PROTOCOLLN("sd file(start_time,file_name,sd_pos): ");
+          SERIAL_PROTOCOLLN(power_off_info.print_job_start_ms);
+          SERIAL_PROTOCOLLN(power_off_info.sd_filename);
+          SERIAL_PROTOCOLLN(power_off_info.sdpos);
+          previous_cmd_ms = power_off_info.print_job_start_ms;
+          card.openFile(power_off_info.sd_filename, true);
+          card.setIndex(power_off_info.sdpos);
+          /* --------------------------------------------------------------------- */
+        }
+        else
+        {
+          if ((power_off_info.valid_head != 0) && (power_off_info.valid_head != power_off_info.valid_foot))
+          {
+            enqueue_and_echo_commands_P(PSTR("M117 INVALID DATA."));
+          }
+          memset(&power_off_info, 0, sizeof(power_off_info));
+          strncpy_P(power_off_info.power_off_filename, PSTR("bin"), sizeof(power_off_info.power_off_filename) - 1);
+        }
+      }
+    }
+  }
+
+  bool drain_power_off_commands()
+  {
+    if (power_off_commands_count > 0)
+    {
+      if(enqueue_and_echo_command(power_off_commands[power_off_commands_index]))
+      {
+        power_off_commands_index++;
+        power_off_commands_count--;
+      }
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  void save_power_off_info ()
+  {
+    int i = 0;
+    // static millis_t pre_time = millis();
+    // static millis_t cur_time = millis();
+    if (card.cardOK && card.sdprinting)
+    {
+      // cur_time = millis();
+      if (
+      #if ENABLED(SAVE_EACH_CMD_MODE)
+        (true)
+      #else
+        ((current_position[2] > 0) && (power_off_info.saved_z != current_position[2]))
+      #endif
+        // || ((cur_time - pre_time) > SAVE_INFO_INTERVAL)
+      )
+      {
+        // pre_time = cur_time;
+        // SERIAL_PROTOCOLLN("Z : ");
+        // SERIAL_PROTOCOLLN(current_position[2]);
+        // SERIAL_PROTOCOLLN(power_off_info.saved_z);
+        power_off_info.valid_head = random(1,256);
+        power_off_info.valid_foot = power_off_info.valid_head;
+        // SERIAL_PROTOCOLLN("save valid: ");
+        // SERIAL_PROTOCOLLN((unsigned long)power_off_info.valid_head);
+        // SERIAL_PROTOCOLLN((unsigned long)power_off_info.valid_foot);
+        /* --------------------------------------------------------------------- */
+        // SERIAL_PROTOCOLLN("current_position(X,Y,Z,SZ,E,F,T1..T4,B): ");
+        for (i = 0; i < NUM_AXIS; i++)
+        {
+          power_off_info.current_position[i] = current_position[i];
+          // SERIAL_PROTOCOLLN(current_position[i]);
+        }
+        power_off_info.saved_z = current_position[Z_AXIS];
+        // SERIAL_PROTOCOLLN(power_off_info.saved_z);
+        power_off_info.feedrate = feedrate_mm_s;
+        // SERIAL_PROTOCOLLN(power_off_info.feedrate);
+        for (i = 0; i < 4; i++)
+        {
+          power_off_info.target_temperature[i] = thermalManager.degTargetHotend(i);
+          // SERIAL_PROTOCOLLN(thermalManager.setTargetHotend[i]);
+        }
+        power_off_info.target_temperature_bed = thermalManager.degTargetBed();
+        // power_off_info.saved_extruder = active_extruder;
+        // SERIAL_PROTOCOLLN(power_off_info.target_temperature_bed);
+        /* --------------------------------------------------------------------- */
+        // SERIAL_PROTOCOLLN("cmd_queue(R,W,C,Q): ");
+        power_off_info.cmd_queue_index_r = cmd_queue_index_r;
+        // SERIAL_PROTOCOLLN(power_off_info.cmd_queue_index_r);
+        power_off_info.cmd_queue_index_w = cmd_queue_index_w;
+        // SERIAL_PROTOCOLLN(power_off_info.cmd_queue_index_w);
+        power_off_info.commands_in_queue = commands_in_queue;
+        // SERIAL_PROTOCOLLN(power_off_info.commands_in_queue);
+        memcpy(power_off_info.command_queue, command_queue, sizeof(power_off_info.command_queue));
+        // for (i = 0; i < BUFSIZE; i++)
+        // {
+        //   SERIAL_PROTOCOLLN(power_off_info.command_queue[i]);
+        // }
+        /* --------------------------------------------------------------------- */
+        // SERIAL_PROTOCOLLN("sd file(start_time,file_name,sd_pos): ");
+        power_off_info.print_job_start_ms = previous_cmd_ms;
+        // SERIAL_PROTOCOLLN(power_off_info.print_job_start_ms);
+        // strcpy(power_off_info.sd_filename,
+        card.getAbsFilename(power_off_info.sd_filename);
+        // SERIAL_PROTOCOLLN(power_off_info.sd_filename);
+        power_off_info.sdpos = card.getIndex();
+        // SERIAL_PROTOCOLLN(power_off_info.sdpos);
+        /* --------------------------------------------------------------------- */
+        card.openPowerOffFile(power_off_info.power_off_filename, O_CREAT | O_WRITE | O_TRUNC | O_SYNC);
+        if (card.savePowerOffInfo(&power_off_info, sizeof(power_off_info)) == -1)
+        {
+          SERIAL_PROTOCOLLN("Write power off file failed.");
+        }
+      }
+    }
+  }
+#endif
+
+/**
  * Marlin entry-point: Set up before the program loop
  *  - Set up the kill pin, filament runout, power hold
  *  - Start the serial port
@@ -13619,6 +13889,11 @@ void setup() {
     delay(1000);
     WRITE(LCD_PINS_RS, HIGH);
   #endif
+
+  // init power off information
+  #if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+	init_power_off_info();
+  #endif
 }
 
 /**
@@ -13669,7 +13944,12 @@ void loop() {
         }
       }
       else
+      {
         process_next_command();
+        #if ENABLED(SDSUPPORT) && ENABLED(POWEROFF_SAVE_SD_FILE)
+          save_power_off_info();
+        #endif
+      }
 
     #else
 
