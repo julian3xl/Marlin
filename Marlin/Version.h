@@ -35,20 +35,20 @@
   /**
    * Marlin release version identifier
    */
-  #define SHORT_BUILD_VERSION "1.1.9.1"
+  #define SHORT_BUILD_VERSION "bugfix-1.1.x"
 
   /**
    * Verbose version identifier which should contain a reference to the location
    * from where the binary was downloaded or the source code was compiled.
    */
-  #define DETAILED_BUILD_VERSION SHORT_BUILD_VERSION " (Creality3D)"
+  #define DETAILED_BUILD_VERSION SHORT_BUILD_VERSION " (Github)"
 
   /**
    * The STRING_DISTRIBUTION_DATE represents when the binary file was built,
    * here we define this default string as the date where the latest release
    * version was tagged.
    */
-  #define STRING_DISTRIBUTION_DATE "2020-04-14"
+  #define STRING_DISTRIBUTION_DATE "2018-07-31"
 
   /**
    * Required minimum Configuration.h and Configuration_adv.h file versions.
