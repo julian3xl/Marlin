@@ -583,7 +583,7 @@
 // @section lcd
 
 // Include a page of printer information in the LCD Main Menu
-#define LCD_INFO_MENU
+//#define LCD_INFO_MENU
 
 // Scroll a longer status message into view
 #define STATUS_MESSAGE_SCROLLING
@@ -681,7 +681,7 @@
    *  - SDSORT_CACHE_NAMES will retain the sorted file listing in RAM. (Expensive!)
    *  - SDSORT_DYNAMIC_RAM only uses RAM when the SD menu is visible. (Use with caution!)
    */
-  //#define SDCARD_SORT_ALPHA
+  #define SDCARD_SORT_ALPHA
 
   // SD Card Sorting options
   #if ENABLED(SDCARD_SORT_ALPHA)
