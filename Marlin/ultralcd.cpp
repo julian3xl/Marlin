@@ -1159,9 +1159,9 @@ void lcd_quick_feedback(const bool clear_buttons) {
         }
         else {
           MENU_ITEM(submenu, MSG_CARD_MENU, lcd_sdcard_menu);
-          #if !PIN_EXISTS(SD_DETECT)
-            MENU_ITEM(gcode, MSG_CNG_SDCARD, PSTR("M21"));  // SD-card changed by user
-          #endif
+          //#if !PIN_EXISTS(SD_DETECT)
+          //  MENU_ITEM(gcode, MSG_CNG_SDCARD, PSTR("M21"));  // SD-card changed by user
+          //#endif
         }
       }
       else {
@@ -2720,39 +2720,12 @@ void lcd_quick_feedback(const bool clear_buttons) {
       MENU_ITEM(gcode, MSG_AUTO_HOME_Z, PSTR("G28 Z"));
     #endif
 
-    MENU_ITEM(gcode, MSG_AUTO_LEVEL_BED, PSTR("M190 R" STRINGIFY(PREHEAT_1_TEMP_BED) "\nG4 S60\nG28\nG29\nM500\nG28\nM140 S0"));
-
     //
     // TMC Z Calibration
     //
     #if ENABLED(TMC_Z_CALIBRATION)
       MENU_ITEM(gcode, MSG_TMC_Z_CALIBRATION, PSTR("G28\nM915"));
     #endif
-
-    #if HAS_TEMP_HOTEND
-
-      //
-      // Cooldown
-      //
-      bool has_heat = false;
-      HOTEND_LOOP() if (thermalManager.target_temperature[HOTEND_INDEX]) { has_heat = true; break; }
-      #if HAS_HEATED_BED
-        if (thermalManager.target_temperature_bed) has_heat = true;
-      #endif
-      if (has_heat) MENU_ITEM(function, MSG_COOLDOWN, lcd_cooldown);
-
-      //
-      // Preheat for Material 1 and 2
-      //
-      #if TEMP_SENSOR_1 != 0 || TEMP_SENSOR_2 != 0 || TEMP_SENSOR_3 != 0 || TEMP_SENSOR_4 != 0 || HAS_HEATED_BED
-        MENU_ITEM(submenu, MSG_PREHEAT_1, lcd_preheat_m1_menu);
-        MENU_ITEM(submenu, MSG_PREHEAT_2, lcd_preheat_m2_menu);
-      #else
-        MENU_ITEM(function, MSG_PREHEAT_1, lcd_preheat_m1_e0_only);
-        MENU_ITEM(function, MSG_PREHEAT_2, lcd_preheat_m2_e0_only);
-      #endif
-
-    #endif // HAS_TEMP_HOTEND
 
     //
     // Level Bed
@@ -2810,6 +2783,31 @@ void lcd_quick_feedback(const bool clear_buttons) {
         #endif
       }
     #endif // ADVANCED_PAUSE_FEATURE
+
+    #if HAS_TEMP_HOTEND
+
+      //
+      // Cooldown
+      //
+      bool has_heat = false;
+      HOTEND_LOOP() if (thermalManager.target_temperature[HOTEND_INDEX]) { has_heat = true; break; }
+      #if HAS_HEATED_BED
+        if (thermalManager.target_temperature_bed) has_heat = true;
+      #endif
+      if (has_heat) MENU_ITEM(function, MSG_COOLDOWN, lcd_cooldown);
+
+      //
+      // Preheat for Material 1 and 2
+      //
+      #if TEMP_SENSOR_1 != 0 || TEMP_SENSOR_2 != 0 || TEMP_SENSOR_3 != 0 || TEMP_SENSOR_4 != 0 || HAS_HEATED_BED
+        MENU_ITEM(submenu, MSG_PREHEAT_1, lcd_preheat_m1_menu);
+        MENU_ITEM(submenu, MSG_PREHEAT_2, lcd_preheat_m2_menu);
+      #else
+        MENU_ITEM(function, MSG_PREHEAT_1, lcd_preheat_m1_e0_only);
+        MENU_ITEM(function, MSG_PREHEAT_2, lcd_preheat_m2_e0_only);
+      #endif
+
+    #endif // HAS_TEMP_HOTEND
 
     //
     // BLTouch Self-Test and Reset
@@ -3352,7 +3350,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
     lcd_completion_feedback();
   }
 
-  #if ENABLED(EEPROM_SETTINGS) && DISABLED(SLIM_LCD_MENUS)
+  #if ENABLED(EEPROM_SETTINGS)
 
     static void lcd_init_eeprom() {
       lcd_completion_feedback(settings.init_eeprom());
@@ -3374,11 +3372,11 @@ void lcd_quick_feedback(const bool clear_buttons) {
     MENU_ITEM(submenu, MSG_TEMPERATURE, lcd_control_temperature_menu);
     MENU_ITEM(submenu, MSG_MOTION, lcd_control_motion_menu);
 
-    #if DISABLED(NO_VOLUMETRICS) || ENABLED(ADVANCED_PAUSE_FEATURE)
-      MENU_ITEM(submenu, MSG_FILAMENT, lcd_control_filament_menu);
-    #elif ENABLED(LIN_ADVANCE)
-      MENU_ITEM_EDIT(float52, MSG_ADVANCE_K, &planner.extruder_advance_K, 0, 999);
-    #endif
+    //#if DISABLED(NO_VOLUMETRICS) || ENABLED(ADVANCED_PAUSE_FEATURE)
+    //  MENU_ITEM(submenu, MSG_FILAMENT, lcd_control_filament_menu);
+    //#elif ENABLED(LIN_ADVANCE)
+    //  MENU_ITEM_EDIT(float52, MSG_ADVANCE_K, &planner.extruder_advance_K, 0, 999);
+    //#endif
 
     #if HAS_LCD_CONTRAST
       MENU_ITEM_EDIT_CALLBACK(int3, MSG_CONTRAST, &lcd_contrast, LCD_CONTRAST_MIN, LCD_CONTRAST_MAX, lcd_callback_set_contrast, true);
@@ -3404,7 +3402,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
 
     MENU_ITEM(function, MSG_RESTORE_FAILSAFE, lcd_factory_settings);
 
-    #if ENABLED(EEPROM_SETTINGS) && DISABLED(SLIM_LCD_MENUS)
+    #if ENABLED(EEPROM_SETTINGS)
       MENU_ITEM(submenu, MSG_INIT_EEPROM, lcd_init_eeprom_confirm);
     #endif
 
