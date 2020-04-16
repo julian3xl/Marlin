@@ -2627,7 +2627,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
       const bool is_homed = all_axes_known();
 
       // Auto Home if not using manual probing
-      #if DISABLED(PROBE_MANUALLY) && DISABLED(MESH_BED_LEVELING)
+      #if DISABLED(PROBE_MANUALLY) && DISABLED(MESH_BED_LEVELING) && DISABLED(SLIM_LCD_MENUS)
         if (!is_homed) MENU_ITEM(gcode, MSG_AUTO_HOME, PSTR("G28"));
       #endif
 
@@ -2807,7 +2807,7 @@ void lcd_quick_feedback(const bool clear_buttons) {
     //
     // BLTouch Self-Test and Reset
     //
-    #if ENABLED(BLTOUCH)
+    #if ENABLED(BLTOUCH) && DISABLED(SLIM_LCD_MENUS)
       MENU_ITEM(gcode, MSG_BLTOUCH_SELFTEST, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_SELFTEST)));
       if (!endstops.z_probe_enabled && TEST_BLTOUCH())
         MENU_ITEM(gcode, MSG_BLTOUCH_RESET, PSTR("M280 P" STRINGIFY(Z_PROBE_SERVO_NR) " S" STRINGIFY(BLTOUCH_RESET)));
